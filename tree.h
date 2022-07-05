@@ -27,3 +27,8 @@ struct loc{
   string type;
   int *value;
 };
+
+struct argument{
+  string name;
+  string type;
+};

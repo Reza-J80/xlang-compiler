@@ -4,6 +4,7 @@
   #include <string.h>
   #include <stdio.h>
   #include <iostream>
+  #include <sstream>
   using namespace std;
 
   extern int yylex();
@@ -14,6 +15,7 @@
 
   int findIndex(vector<var> list , string name);
   int findIndex(vector<func> list , string name);
+  int addVar(string name , string type);
 
 	extern int yylineno;
 
@@ -29,7 +31,9 @@
   struct func *func;
   struct expression *expression;
   struct loc *loc;
+  struct argument *argument;
   vector<string> *types;
+  vector<struct argument> *arguments;
 }
 
 
@@ -84,7 +88,6 @@
 %type<str>method_name
 %type<str>ids
 %type<str>method_type
-%type<str>arg
 %type<str>variables
 %type<str>variable
 %type<str>id 
@@ -119,12 +122,14 @@
 %type<expression>Q
 %type<expression>T
 
-%type<types>args
 %type<types>exprs
+%type<types>moreexprs
 
 %type<loc>location
 
-
+%type<argument>arg
+%type<arguments>args
+%type<arguments>moreargs
 
 
 
@@ -132,41 +137,55 @@
 %%
 /*============================program============================*/
 program:  
-  TOKEN_CLASS TOKEN_PROGRAMCLASS TOKEN_LCB decl_list TOKEN_RCB {};
+  TOKEN_CLASS TOKEN_PROGRAMCLASS TOKEN_LCB decl_list TOKEN_RCB {cout << "there is no semantic errors:)" << endl;};
   
 
 decl_list: 
   field_decl decl_list {} |
 
-  TOKEN_VOIDTYPE N id TOKEN_LP args TOKEN_RP M block method_decls1 {
+  TOKEN_VOIDTYPE N id TOKEN_LP args TOKEN_RP M block  {
     int index = findIndex(funcList , $3);
     if(index == -1){
       struct func temp;
       temp.name = $3;
       temp.type = $1;
-      temp.arguments.insert(temp.arguments.end() , $5->begin() , $5->end());
+      for(int i = 0; i < $5->size(); i++){
+        temp.arguments.push_back($5->at(i).type);
+        int flag = addVar($5->at(i).name , $5->at(i).type);
+        if (!flag){
+          cout << "line " << yylineno << ": " << $5->at(i).name << " is already defind" << endl;
+          exit(-1);
+        }
+      }
       funcList.push_back(temp);
     }
     else{
       cout << "line " << yylineno << ": " << $3 << " already defind" << endl;
       exit(-1);
     }
-  } | 
+  } method_decls1 | 
    
-  type N id TOKEN_LP args TOKEN_RP M block method_decls1 {
+  type N id TOKEN_LP args TOKEN_RP M block {
     int index = findIndex(funcList , $3);
     if(index == -1){
       struct func temp;
       temp.name = $3;
       temp.type = $1;
-      temp.arguments.insert(temp.arguments.end(), $5->begin() , $5->end());
+      for(int i = 0; i < $5->size(); i++){
+        temp.arguments.push_back($5->at(i).type);
+        int flag = addVar($5->at(i).name , $5->at(i).type);
+        if (!flag){
+          cout << "line " << yylineno << ": " << $5->at(i).name << " is already defind" << endl;
+          exit(-1);
+        }
+      }
       funcList.push_back(temp);
     }
     else{
       cout << "line " << yylineno << ": " << $3 << " already defind" << endl;
       exit(-1);
     }
-  } | 
+  } method_decls1 | 
 
   main_decl method_decls {};
 
@@ -190,15 +209,8 @@ O: {$$ = $<str>-2;};
 variable: 
 
   id {
-    int index = findIndex(varList , $1);
-    if(index == -1){
-      struct var temp;
-      temp.name = $1;
-      temp.type = $<str>0;
-      temp.isArray = 0;
-      varList.push_back(temp);
-    }
-    else{
+    int temp = addVar($1 , $<str>0);
+    if (!temp){
       cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
       exit(-1);
     }
@@ -213,6 +225,9 @@ variable:
         temp.type = $<str>0;
         temp.isArray = 1;
         temp.size = $3;
+        for(int i = 0; i < temp.size; i++){
+          temp.values.push_back(0);
+        }
         varList.push_back(temp);
       }
       else{
@@ -244,7 +259,14 @@ method_decl:
       struct func temp;
       temp.name = $2;
       temp.type = $1;
-      temp.arguments.insert(temp.arguments.end() , $4->begin() , $4->end());
+      for(int i = 0; i < $4->size(); i++){
+        temp.arguments.push_back($4->at(i).type);
+        int flag = addVar($4->at(i).name , $4->at(i).type);
+        if (!flag){
+          cout << "line " << yylineno << ": " << $4->at(i).name << " is already defind" << endl;
+          exit(-1);
+        }
+      }
       funcList.push_back(temp);
     }
     else{
@@ -262,24 +284,26 @@ method_type:
   type {$$ = $1;} |
   TOKEN_VOIDTYPE {$$ = $1;};
 
-args: {} |
-  arg {$$->push_back($1);} |
-  //=============================
-  arg TOKEN_COMMA args {$$->push_back($1); $$->insert($$->end() , $3->begin() , $3->end());};
+args: {$$ = new vector<struct argument>;} |
+  moreargs {$$ = new vector<argument>; $$->insert($$->end() , $1->begin() , $1->end());};
 
+moreargs: 
+  arg {$$ = new vector<struct argument>; $$->push_back(*$1);} |
+  moreargs TOKEN_COMMA arg {$$ = new vector<struct argument>; $$->insert($$->end() , $1->begin() , $1->end()); $$->push_back(*$3);};
 
 arg: 
-  type id {$$ = $1;};
+  type id {$$ = new argument; $$->name = $2; $$->type = $1;};
 
 
 /*============================block============================*/
 block: TOKEN_LCB var_decls P statements TOKEN_RCB {
-  if(!$4->value)
+  if($4->value == 0){
     cout << "line " << yylineno << ": this method should return a value" << endl;
-    exit(-1);   
+    exit(-1);
+  }
 };
 
-P: {$$ = new expression; $$->type = $<str>-2; $$->value = ($<str>-2  == "void");};
+P: {$$ = new expression; $$->type = $<str>-2; $$->value = $$->type  == "void" ? 1 : 0;};
 
 
 /*============================variable decleration============================*/
@@ -291,31 +315,17 @@ var_decl:
 
 ids: 
   id  {
-    int index = findIndex(varList , $1);
-    if(index == -1){
-      struct var temp;
-      temp.name = $1;
-      temp.type = $<str>0;
-      temp.isArray = 0;
-      varList.push_back(temp);
-    }
-    else{
+    int temp = addVar($1 , $<str>0);
+    if (!temp){
       cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
       exit(-1);
     }
   } | 
   
   ids TOKEN_COMMA id {
-    int index = findIndex(varList , $3);
-    if(index == -1){
-      struct var temp;
-      temp.name = $3;
-      temp.type = $<str>0;
-      temp.isArray = 0;
-      varList.push_back(temp);
-    }
-    else{
-      cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
+    int temp = addVar($3 , $<str>0);
+    if (!temp){
+      cout << "line " << yylineno << ": " << $3 << " is already defind" << endl;
       exit(-1);
     }
   };
@@ -330,61 +340,62 @@ type:
 
 
 /*============================statement============================*/
-statements: {} | 
-  Q statement T statements {if($1->value || $2->value || $3->value) $$->value = 1; else $$->value = 0;};
+statements: {$$ = $<expression>0;} | 
+  Q statement T statements {$$ = new expression; if($1->value || $2->value || $4->value) $$->value = 1; else $$->value = 0;};
 
 Q: {$$ = $<expression>0;};
 T: {$$ = $<expression>-1;};
 
 statement: 
   location TOKEN_ASSIGNOP expr TOKEN_SEMICOLON {
-    $$->value = 0;
-    if($3->type == $1->type)
+    if($3->type == $1->type){
       *$1->value = $3->value;
+    }
     else{
       cout << "line " << yylineno << ": types do not match" << endl;
       exit(-1);
     }
+    $$->value = 0;
   } |
 
   location TOKEN_MINUSASSIGNOP expr TOKEN_SEMICOLON {
-    $$->value = 0;
     if($3->type == "int" && $1->type == "int")
       *$1->value -= $3->value;
     else{
       cout << "line " << yylineno << ": expected integer location and expression" << endl;
     }
+    $$->value = 0;
   } |
 
   location TOKEN_PLUSASSIGNOP expr TOKEN_SEMICOLON {
-    $$->value = 0;
     if($3->type == "int" && $1->type == "int")
       *$1->value += $3->value;
     else{
       cout << "line " << yylineno << ": expected integer location and expression" << endl;
     }
+    $$->value = 0;
   } |
   
   method_call TOKEN_SEMICOLON {$$->value = 0;} |
 
   TOKEN_IFCONDITION TOKEN_LP expr TOKEN_RP R block else_block {
-    $$->value = 0;
     if($3->type != "bool"){
       cout << "expected boolean type expression in line: " << yylineno << endl;
       exit(-1);
     }
+    $$->value = 0;
   } |
   
   TOKEN_LOOP id TOKEN_ASSIGNOP expr TOKEN_COMMA expr R block {
-    $$->value = 0;
     if($4->type != "int" || $6->type != "int"){
       cout << "expected integer type expression in line: " << yylineno << endl;
       exit(-1);
     }
+    $$->value = 0;
   } |
   
   TOKEN_RETURN expr TOKEN_SEMICOLON {
-    if($$->type != $2->type){
+    if($<expression>0->type != $2->type){
       cout << "line " << yylineno << ": method return type do not match the returned expression" << endl;
       exit(-1);
     }
@@ -397,19 +408,20 @@ statement:
       cout << "line " << yylineno << ": method should return a value" << endl;
       exit(-1);
     }
+    else
+      $$->value = 1;
   } |
   
-  TOKEN_BREAKSTMT TOKEN_SEMICOLON {} |
+  TOKEN_BREAKSTMT TOKEN_SEMICOLON {$$->value = 0;} |
   
-  TOKEN_CONTINUESTMT TOKEN_SEMICOLON {} |
+  TOKEN_CONTINUESTMT TOKEN_SEMICOLON {$$->value = 0;} |
   
-  block {};
+  block {$$->value = 0;};
 
 R: {$$ = strdup("void");};
 
 else_block: {} |  
   TOKEN_ELSECONDITION block {};
-
 
 
 /*============================method call============================*/
@@ -420,10 +432,20 @@ method_call:
       cout << "method has not been declared\n";
       exit(-1);
     }
-    else{
+    else if($3->size() == funcList[temp].arguments.size()){
+      for(int i = 0; i < $3->size(); i++){
+        if($3->at(i) != funcList[temp].arguments[i]){
+          cout << "line " << yylineno << ": input expressions do not match the method arguments type" << endl;
+          exit(-1);
+        }
+      }
       $$ = new expression;
-      $$->value = 0;
+      $$->value = 1;
       $$->type = funcList[temp].type;
+    }
+    else{
+      cout << "number of arguments do not match" << endl;
+      exit(-1);
     }
   } | 
   
@@ -450,7 +472,7 @@ location:
     }
     else if(varList[temp].isArray == 0){
       $$ = new loc;
-      $$->value = &varList[temp].size;
+      $$->value = &varList[temp].size; 
       $$->type = varList[temp].type;
     }
     else{
@@ -486,9 +508,12 @@ location:
 
 
 /*============================expression============================*/
-exprs: {} | 
-  expr {$$->push_back($1->type);} |
-  expr TOKEN_COMMA exprs {$$->push_back($1->type) , $$->insert($$->end() , $3->begin() , $3->end());};
+exprs: {$$ = new vector<string>;} |
+  moreexprs {$$ = new vector<string>; $$->insert($$->end() , $1->begin() , $1->end());};
+
+moreexprs: 
+  expr {$$ = new vector<string>; $$->push_back($1->type);} |
+  moreexprs TOKEN_COMMA expr {$$ = new vector<string>; $$->insert($$->end() , $1->begin() , $1->end()); $$->push_back($3->type);};
 
 expr: 
   expr TOKEN_OROP expr1 {
@@ -764,8 +789,6 @@ int main(){
   }
   yyin = fr;
   yyparse();
-
-  cout << "there is no semantic errors:)" << endl;
 }
 
 void yyerror(const char *s){
@@ -786,4 +809,16 @@ int findIndex(vector<func> list , string name){
     return -1;
 }
 
-//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
+int addVar(string name , string type){
+  int index = findIndex(varList , name);
+    if(index == -1){
+      struct var temp;
+      temp.name = name;
+      temp.type = type;
+      temp.isArray = 0;
+      temp.size = 0;
+      varList.push_back(temp);
+      return 1;
+    }
+  return 0;
+}

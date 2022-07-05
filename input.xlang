@@ -1,8 +1,13 @@
 class Program {
+  int f[1];
   int c , d;
+
+  int temp(int g , int h){
+    c = 4;
+    return 4; 
+  }
   void main(){
     int a , b;
-    boolean f;
-    return;
+    a = temp(3 , 4);
   }
 }
