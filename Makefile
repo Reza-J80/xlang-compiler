@@ -1,5 +1,5 @@
-parser: parser.tab.c lex.yy.c tree.cpp
-	g++ parser.tab.c lex.yy.c tree.cpp -o parser
+parser: parser.tab.c lex.yy.c
+	g++ parser.tab.c lex.yy.c -o parser
 
 lex.yy.c: lexical.l parser.tab.c
 	flex lexical.l

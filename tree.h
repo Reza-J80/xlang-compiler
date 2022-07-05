@@ -8,7 +8,7 @@ struct var{
   string name;
   string type;
   int isArray;
-  int size = 0;
+  int size;
   vector<int> values;
 };
 

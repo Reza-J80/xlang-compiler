@@ -68,7 +68,7 @@ main     {yylval.str = strdup(yytext);           return TOKEN_MAINFUNC;}
 \t      /*ignore whitespaces*/
 " "     /*ignore whitespaces*/
 
-\'{char}\'   {yylval.str = strdup(yytext);   return TOKEN_CHARCONST;}
+\'{char}\'   {yylval.number = yytext[0];   return TOKEN_CHARCONST;}
 \"{char}*\"  {yylval.str = strdup(yytext);   return TOKEN_STRINGCONST;}
 
 -?0x0+ {yylval.number = 0; return TOKEN_HEXADECIMALCONST;}

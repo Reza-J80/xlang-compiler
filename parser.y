@@ -1,6 +1,7 @@
 %{
   #include "tree.h"
-  #include <vector.h>
+  #include <vector>
+  #include <string.h>
   #include <stdio.h>
   #include <iostream>
   using namespace std;
@@ -16,9 +17,6 @@
 
 	extern int yylineno;
 
-  int input;
-  tree *root;
-
   vector<struct var> varList;
   vector<struct func> funcList;
 %}
@@ -27,11 +25,11 @@
 %union{
   int number;
   char* str;
-  struct var var;
-  struct func func;
-  struct expression expression;
-  struct loc loc;
-  vector<string> types;
+  struct var *var;
+  struct func *func;
+  struct expression *expression;
+  struct loc *loc;
+  vector<string> *types;
 }
 
 
@@ -75,8 +73,8 @@
 %token<str> TOKEN_RP
 %token<str> TOKEN_SEMICOLON
 %token<str> TOKEN_COMMA
-%token<str> TOKEN_CHARCONST
 %token<str> TOKEN_STRINGCONST
+%token<number> TOKEN_CHARCONST
 %token<number> TOKEN_HEXADECIMALCONST
 %token<number> TOKEN_DECIMALCONST
 %token<number> TOKEN_BOOLEANCONST
@@ -92,6 +90,11 @@
 %type<str>id 
 %type<str>string_literal
 %type<str>type
+%type<str>M
+%type<str>N
+%type<str>O
+%type<str>R
+%type<str>S
 
 %type<number>int_literal 
 %type<number>deciamal_literal 
@@ -112,6 +115,9 @@
 %type<expression>method_call
 %type<expression>statements
 %type<expression>statement
+%type<expression>P
+%type<expression>Q
+%type<expression>T
 
 %type<types>args
 %type<types>exprs
@@ -132,70 +138,90 @@ program:
 decl_list: 
   field_decl decl_list {} |
 
-  TOKEN_VOIDTYPE id TOKEN_LP args TOKEN_RP {$6 = $1;} block method_decls1 {
-    int index = findIndex(funcList , $2);
+  TOKEN_VOIDTYPE N id TOKEN_LP args TOKEN_RP M block method_decls1 {
+    int index = findIndex(funcList , $3);
     if(index == -1){
       struct func temp;
-      temp.name = $2;
+      temp.name = $3;
       temp.type = $1;
-      temp.arguments.push_back($4.begin() , $4.end());
+      temp.arguments.insert(temp.arguments.end() , $5->begin() , $5->end());
       funcList.push_back(temp);
     }
     else{
-      cout << yylineno << " : $2 already defind" << endl;
+      cout << "line " << yylineno << ": " << $3 << " already defind" << endl;
       exit(-1);
     }
   } | 
    
-  type id TOKEN_LP args TOKEN_RP {$6 = $1;} block method_decls1 {
-    int index = findIndex(funcList , $2);
+  type N id TOKEN_LP args TOKEN_RP M block method_decls1 {
+    int index = findIndex(funcList , $3);
     if(index == -1){
       struct func temp;
-      temp.name = $2;
+      temp.name = $3;
       temp.type = $1;
-      temp.arguments.push_back($4.begin() , $4.end());
+      temp.arguments.insert(temp.arguments.end(), $5->begin() , $5->end());
       funcList.push_back(temp);
     }
     else{
-      cout << yylineno << " : $2 already defind" << endl;
+      cout << "line " << yylineno << ": " << $3 << " already defind" << endl;
       exit(-1);
     }
   } | 
 
   main_decl method_decls {};
 
+  M: {$$ = $<str>-5;};
+
 
 
 
 /*============================field decleration============================*/
-field_decl : 
-  type {$2 = $1;} variables TOKEN_SEMICOLON {};
+field_decl: 
+  type variables TOKEN_SEMICOLON {};
 
 
-variables : 
-  {$1 = $$;} variable |
-  {$1 = $$;} variable TOKEN_COMMA {$3 = $$;} variables ;
+variables: 
+  N variable |
+  variables TOKEN_COMMA O variable ;
 
+N: {$$ = $<str>0;};
+O: {$$ = $<str>-2;};
 
-variable :  
+variable: 
+
   id {
-    struct var temp;
-    temp.name = $1;
-    temp.type = $$;
-    temp.isArray = 0;
-    varList.push_back(temp);
+    int index = findIndex(varList , $1);
+    if(index == -1){
+      struct var temp;
+      temp.name = $1;
+      temp.type = $<str>0;
+      temp.isArray = 0;
+      varList.push_back(temp);
+    }
+    else{
+      cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
+      exit(-1);
+    }
   } | 
 
   id TOKEN_LB int_literal TOKEN_RB {
     if($3 > 0){
-      struct var temp;
-      temp.name = $1;
-      temp.type = $$;
-      temp.isArray = 1;
-      temp.size = $3;
+      int index = findIndex(varList , $1);
+      if(index == -1){
+        struct var temp;
+        temp.name = $1;
+        temp.type = $<str>0;
+        temp.isArray = 1;
+        temp.size = $3;
+        varList.push_back(temp);
+      }
+      else{
+        cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
+        exit(-1);
+      }
     }
     else{
-      cout << yylineno << " : array size must be more than zero" << endl;
+      cout << "line " << yylineno << ": array size must be more than zero" << endl;
     }
   };
 
@@ -204,50 +230,56 @@ variable :
 
 
 /*============================method decleration============================*/
-method_decls : {} | 
+method_decls: {} | 
   method_decl method_decls {};
 
 method_decls1:
   method_decl method_decls1 {} |
   main_decl method_decls {};
 
-method_decl : 
-  method_type id TOKEN_LP args TOKEN_RP {$6 = $1;} block {
+method_decl: 
+  method_type id TOKEN_LP args TOKEN_RP M block {
     int index = findIndex(funcList , $2);
     if(index == -1){
       struct func temp;
       temp.name = $2;
       temp.type = $1;
-      temp.arguments.push_back($4.begin() , $4.end());
+      temp.arguments.insert(temp.arguments.end() , $4->begin() , $4->end());
       funcList.push_back(temp);
     }
     else{
-      cout << yylineno << " : $2 already defind" << endl;
+      cout << "line " << yylineno << ": " << $2 << " is already defind" << endl;
       exit(-1);
     }
   };
 
 main_decl:
-  TOKEN_VOIDTYPE TOKEN_MAINFUNC TOKEN_LP TOKEN_RP block {};
+  TOKEN_VOIDTYPE TOKEN_MAINFUNC TOKEN_LP TOKEN_RP S block {};
 
-method_type : 
+S: {$$ = strdup("void");}
+
+method_type: 
   type {$$ = $1;} |
   TOKEN_VOIDTYPE {$$ = $1;};
 
-args : {} |
-  arg {$$.push_back($1);} |
-  arg TOKEN_COMMA args {$$.push_back($1); $$.pushback($3.begin() , $3.end());};
+args: {} |
+  arg {$$->push_back($1);} |
+  //=============================
+  arg TOKEN_COMMA args {$$->push_back($1); $$->insert($$->end() , $3->begin() , $3->end());};
 
 
-arg : 
+arg: 
   type id {$$ = $1;};
 
 
 /*============================block============================*/
-block: TOKEN_LCB var_decls {$3.type = $$; $3.value = ($$ == "void");} statements TOKEN_RCB {
-  if(!$3.value)
-    cout << yylineno << " : method shoould return a value" << endl;   
+block: TOKEN_LCB var_decls P statements TOKEN_RCB {
+  if(!$4->value)
+    cout << "line " << yylineno << ": this method should return a value" << endl;
+    exit(-1);   
 };
+
+P: {$$ = new expression; $$->type = $<str>-2; $$->value = ($<str>-2  == "void");};
 
 
 /*============================variable decleration============================*/
@@ -255,7 +287,7 @@ var_decls: {} |
   var_decl var_decls {};
 
 var_decl: 
-  type {$2 = $1;} ids TOKEN_SEMICOLON;
+  type N ids TOKEN_SEMICOLON;
 
 ids: 
   id  {
@@ -263,27 +295,27 @@ ids:
     if(index == -1){
       struct var temp;
       temp.name = $1;
-      temp.type = $$;
+      temp.type = $<str>0;
       temp.isArray = 0;
       varList.push_back(temp);
     }
     else{
-      cout << yylineno << " : $1 already defind" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
       exit(-1);
     }
   } | 
   
-  id TOKEN_COMMA {$3 = $$;} ids {
-    int index = findIndex(varList , $1);
+  ids TOKEN_COMMA id {
+    int index = findIndex(varList , $3);
     if(index == -1){
       struct var temp;
-      temp.name = $1;
-      temp.type = $$;
+      temp.name = $3;
+      temp.type = $<str>0;
       temp.isArray = 0;
       varList.push_back(temp);
     }
     else{
-      cout << yylineno << " : $1 already defind" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is already defind" << endl;
       exit(-1);
     }
   };
@@ -292,68 +324,77 @@ ids:
 
 /*============================type============================*/
 type: 
-  TOKEN_INTTYPE {$$ = "int";} | 
-  TOKEN_BOOLEANTYPE {$$ = "bool";};
+  TOKEN_INTTYPE {$$ = strdup("int");} | 
+  TOKEN_BOOLEANTYPE {$$ = strdup("bool");};
 
 
 
 /*============================statement============================*/
 statements: {} | 
-  {$1 = $$;} statement statements {if($1.value) $$.value = 1; };
+  Q statement T statements {if($1->value || $2->value || $3->value) $$->value = 1; else $$->value = 0;};
+
+Q: {$$ = $<expression>0;};
+T: {$$ = $<expression>-1;};
 
 statement: 
   location TOKEN_ASSIGNOP expr TOKEN_SEMICOLON {
-    if($3.type == $1.type)
-      *$1.value = $3.value;
+    $$->value = 0;
+    if($3->type == $1->type)
+      *$1->value = $3->value;
     else{
-      cout << yylineno << " : types do not match" << endl;
+      cout << "line " << yylineno << ": types do not match" << endl;
+      exit(-1);
     }
   } |
 
   location TOKEN_MINUSASSIGNOP expr TOKEN_SEMICOLON {
-    if($3.type == "int" && $1.type == "int")
-      *$1.value -= $3.value;
+    $$->value = 0;
+    if($3->type == "int" && $1->type == "int")
+      *$1->value -= $3->value;
     else{
-      cout << yylineno << " : expected integer location and expression" << endl;
+      cout << "line " << yylineno << ": expected integer location and expression" << endl;
     }
   } |
 
   location TOKEN_PLUSASSIGNOP expr TOKEN_SEMICOLON {
-    if($3.type == "int" && $1.type == "int")
-      *$1.value += $3.value;
+    $$->value = 0;
+    if($3->type == "int" && $1->type == "int")
+      *$1->value += $3->value;
     else{
-      cout << yylineno << " : expected integer location and expression" << endl;
+      cout << "line " << yylineno << ": expected integer location and expression" << endl;
     }
   } |
   
-  method_call TOKEN_SEMICOLON {} |
+  method_call TOKEN_SEMICOLON {$$->value = 0;} |
 
-  TOKEN_IFCONDITION TOKEN_LP expr TOKEN_RP {$5 = "void";} block else_block {
-    if($4.type != "bool"){
-      cout << "expected boolean type expression in line : " << yylineno << endl;
+  TOKEN_IFCONDITION TOKEN_LP expr TOKEN_RP R block else_block {
+    $$->value = 0;
+    if($3->type != "bool"){
+      cout << "expected boolean type expression in line: " << yylineno << endl;
       exit(-1);
     }
   } |
   
-  TOKEN_LOOP id TOKEN_ASSIGNOP expr TOKEN_COMMA expr {$7 = "void";} block {
-    if($4.type != "int" || $6.type != "int"){
-      cout << "expected integer type expression in line : " << yylineno << endl;
+  TOKEN_LOOP id TOKEN_ASSIGNOP expr TOKEN_COMMA expr R block {
+    $$->value = 0;
+    if($4->type != "int" || $6->type != "int"){
+      cout << "expected integer type expression in line: " << yylineno << endl;
       exit(-1);
     }
   } |
   
   TOKEN_RETURN expr TOKEN_SEMICOLON {
-    if($$.type != $2.type){
-      cout << yylineno << " : method return type do not match the returned expression" << endl;
-      exit(-1)
+    if($$->type != $2->type){
+      cout << "line " << yylineno << ": method return type do not match the returned expression" << endl;
+      exit(-1);
     }
     else
-      $$.value = 1;
+      $$->value = 1;
   } |
 
   TOKEN_RETURN TOKEN_SEMICOLON {
-    if($$.type != "void"){
-      cout << yylineno << " : method should return a value" << endl;
+    if($<expression>0->type != "void"){
+      cout << "line " << yylineno << ": method should return a value" << endl;
       exit(-1);
     }
   } |
@@ -364,6 +405,8 @@ statement:
   
   block {};
 
+R: {$$ = strdup("void");};
+
 else_block: {} |  
   TOKEN_ELSECONDITION block {};
 
@@ -372,22 +415,23 @@ else_block: {} |
 /*============================method call============================*/
 method_call: 
   method_name TOKEN_LP exprs TOKEN_RP {
-    int temp = findIndex(funcList , $1)
+    int temp = findIndex(funcList , $1);
     if(temp == -1){
       cout << "method has not been declared\n";
-      exit(-1)
+      exit(-1);
     }
     else{
-      $$.value = 0;
-      $$.type = funcListp[temp].type;
+      $$ = new expression;
+      $$->value = 0;
+      $$->type = funcList[temp].type;
     }
   } | 
   
   TOKEN_CALLOUT TOKEN_LP string_literal TOKEN_COMMA callout_args TOKEN_RP 
-    {$$.type = "int" $$.value = 0;} | 
+    {$$ = new expression; $$->type = "int"; $$->value = 0;} | 
   
   TOKEN_CALLOUT TOKEN_LP string_literal TOKEN_RP 
-    {$$.type = "int" $$.value = 0;}; 
+    {$$ = new expression; $$->type = "int"; $$->value = 0;}; 
 
 
 
@@ -401,245 +445,262 @@ location:
   id  {
     int temp = findIndex(varList , $1);
     if(temp == -1){
-      cout << yylineno << " : " << $1 << " is not declared" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is not declared" << endl;
       exit(-1);
     }
-    else if(varList[temp].isArray){
-      $$.value = &varList[temp].size;
-      $$.type = varList[temp].type;
+    else if(varList[temp].isArray == 0){
+      $$ = new loc;
+      $$->value = &varList[temp].size;
+      $$->type = varList[temp].type;
     }
     else{
-      cout << yylineno << " : " << $1 << " is an array" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is an array" << endl;
       exit(-1);
     }
   } | 
 
   id TOKEN_LB expr TOKEN_RB {
-    if($3.type != "int"){
-      cout << "expected integer type expression in line : " << yylineno << endl;
+    if($3->type != "int"){
+      cout << "expected integer type expression in line: " << yylineno << endl;
       exit(-1);
     }
     int temp = findIndex(varList , $1);
     if(temp == -1){
-      cout << yylineno << " : " << $1 << " is not declared" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is not declared" << endl;
       exit(-1);
     }
     else if(!varList[temp].isArray){
-      cout << yylineno << " : " << $1 << " is not an array" << endl;
+      cout << "line " << yylineno << ": " << $1 << " is not an array" << endl;
       exit(-1);
     }
-    else if($3.value >= varList[temp].size){
-      cout << "out of range index in line : " << yylineno << endl;
+    else if($3->value >= varList[temp].size){
+      cout << "out of range index in line: " << yylineno << endl;
       exit(-1);
     }
     else{
-      $$.value = &varList[temp].values[$3.value];
-      $$.type = varList[temp].type;
+      $$ = new loc; 
+      $$->value = &varList[temp].values[$3->value];
+      $$->type = varList[temp].type;
     }
   };
 
 
 /*============================expression============================*/
 exprs: {} | 
-  expr {$$.push_back($1.type);} |
-  expr TOKEN_COMMA exprs {$$.push_back($1.type) , $$.push_back($3.begin() , $3.end())};
+  expr {$$->push_back($1->type);} |
+  expr TOKEN_COMMA exprs {$$->push_back($1->type) , $$->insert($$->end() , $3->begin() , $3->end());};
 
-expr : 
+expr: 
   expr TOKEN_OROP expr1 {
-    if($1.type == "bool" && $3.type == "bool"){
-      $$.type = "bool";
-      $$.value = $1 || $3;
+    if($1->type == "bool" && $3->type == "bool"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value || $3->value;
     }
     else{
-      cout << "expected boolean type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected boolean type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr1 {$$ = $1;};
 
 expr1: 
   expr1 TOKEN_ANDOP expr2 {
-    if($1.type == "bool" && $3.type == "bool"){
-      $$.type = "bool";
-      $$.value = $1 && $3;
+    if($1->type == "bool" && $3->type == "bool"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value && $3->value;
     }
     else{
-      cout << "expected boolean type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected boolean type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr2 {$$ = $1;};
 
 expr2:
   expr2 TOKEN_EQUALITYOP expr3 {
-    if($1.type == $3.type){
-      if($1.type == "bool" || $1.type == "int"){
-        $$.type = $1.type;
-        $$.value = $1 == $3;
+    if($1->type == $3->type){
+      if($1->type == "bool" || $1->type == "int"){
+        $$ = new expression; 
+        $$->type = $1->type;
+        $$->value = $1->value == $3->value;
       }
       else{
-        cout << "expected boolean or int expressions in line : " << yylineno << endl;
+        cout << "expected boolean or int expressions in line: " << yylineno << endl;
         exit(-1);
       }
     }
     else{
-      cout << "expressions types do not match in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expressions types do not match in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr2 TOKEN_NONEQUALITYOP expr3 {
-    if($1.type == $3.type){
-      if($1.type == "bool" || $1.type == "int"){
-        $$.type = $1.type;
-        $$.value = $1 != $3;
+    if($1->type == $3->type){
+      if($1->type == "bool" || $1->type == "int"){
+        $$ = new expression; 
+        $$->type = $1->type;
+        $$->value = $1->value != $3->value;
       }
       else{
-        cout << "expected boolean or int expressions in line : " << yylineno << endl;
+        cout << "expected boolean or int expressions in line: " << yylineno << endl;
         exit(-1);
       }
     }
     else{
-      cout << "expressions types do not match in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expressions types do not match in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr3 {$$ = $1;};
 
 expr3:
   expr3 TOKEN_GEQOP expr4 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "bool";
-      $$.value = $1 >= $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value >= $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr3 TOKEN_LEQOP expr4 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "bool";
-      $$.value = $1 <= $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value <= $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr3 TOKEN_GREATEROP expr4 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "bool";
-      $$.value = $1 > $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value > $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr3 TOKEN_LESSOP expr4 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "bool";
-      $$.value = $1 < $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = $1->value < $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr4 {$$ = $1;};
 
 expr4:
   expr4 TOKEN_PLUSOP expr5 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "int";
-      $$.value = $1 + $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      $$->value = $1->value + $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr4 TOKEN_MINUSOP expr5 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "int";
-      $$.value = $1 - $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      $$->value = $1->value - $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr5 {$$ = $1;};
 
 expr5:
   expr5 TOKEN_MODULSOP expr6 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "int";
-      $$.value = $1 % $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      $$->value = $1->value % $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr5 TOKEN_MULTIPLEOP expr6 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "int";
-      $$.value = $1 * $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      $$->value = $1->value * $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr5 TOKEN_DIVISIONOP expr6 {
-    if($1.type == "int" && $3.type == "int"){
-      $$.type = "int";
-      if($3.value == 0)
-        cout << "WARNING : division by zero in line : " << yylineno << endl;
-      $$.value = $1 / $3;
+    if($1->type == "int" && $3->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      if($3->value == 0)
+        cout << "WARNING: division by zero in line: " << yylineno << endl;
+      $$->value = $1->value / $3->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr6 {$$ = $1;};
 
 expr6: 
   TOKEN_MINUSOP expr7 {
-    if($2.type == "int"){
-      $$.type = "int";
-      $$.value = -$2;
+    if($2->type == "int"){
+      $$ = new expression; 
+      $$->type = "int";
+      $$->value = -$2->value;
     }
     else{
-      cout << "expected integer type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected integer type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr7 {$$ = $1;};
 
 expr7:
   TOKEN_LOGICOP expr8 {
-    if($2.type == "bool"){
-      $$.type = "bool";
-      $$.value = !$2;
+    if($2->type == "bool"){
+      $$ = new expression; 
+      $$->type = "bool";
+      $$->value = !$2->value;
     }
     else{
-      cout << "expected boolean type expressions in line : " << yylineno << endl;
-      exit(-1)
+      cout << "expected boolean type expressions in line: " << yylineno << endl;
+      exit(-1);
     }
   } |
   expr8 {$$ = $1;};
 
 
 expr8:
-  location {$$.type = $1.type; $$.value == *$1.value} |
+  location {$$ = new expression; $$->type = $1->type; $$->value == *$1->value;} |
   method_call {
-    if($1.type != "void") 
+    if($1->type != "void") 
       $$ = $1; 
     else{
-      cout << yylineno << " method with type void cannot be used in an expression" << endl;
+      cout << "line " << yylineno << " method with type void cannot be used in an expression" << endl;
     }
   } |
   literal {$$ = $1;} |
@@ -658,9 +719,9 @@ callout_arg:
 
 /*============================literal============================*/
 literal: 
-  int_literal {$$.type = "int"; $$.value = $1;} | 
-  char_literal {$$.type = "int"; $$.value = $1;} | 
-  bool_literal {$$.type = "int"; $$.value = $1;};
+  int_literal {$$ = new expression; $$->type = "int"; $$->value = $1;} | 
+  char_literal {$$ = new expression; $$->type = "char"; $$->value = $1;} | 
+  bool_literal {$$ = new expression; $$->type = "bool"; $$->value = $1;};
 
 
 /*============================id============================*/
@@ -691,16 +752,20 @@ char_literal:
 /*============================string literal============================*/
 string_literal: 
   TOKEN_STRINGCONST {$$ = $1;};
+
 %%
 
 
-int main(int argc, char **argv){
-  input = atol(argv[1]);
+int main(){
   FILE * fr = fopen("input.xlang" , "r");
+  if(!fr){
+    cout << "file did not open" << endl;
+    return 0;
+  }
   yyin = fr;
   yyparse();
 
-  cout << endl;
+  cout << "there is no semantic errors:)" << endl;
 }
 
 void yyerror(const char *s){
